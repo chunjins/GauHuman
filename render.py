@@ -10,6 +10,7 @@
 #
 
 import torch
+import cv2
 from scene import Scene
 import os
 import time
@@ -75,13 +76,24 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         gt = rgbs_gt[id]
         rendering = torch.clamp(rendering, 0.0, 1.0)
         gt = torch.clamp(gt, 0.0, 1.0)
-        torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(id) + ".png"))
-        torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(id) + ".png"))
+
+        if "zju_mocap" in model_path:
+            fn = f"camera_{int(views[id].cam_id)+1:02d}_frame_{int(views[id].frame_id):06d}.png"
+        else:
+            fn = f"{id}.png"
+
+        torchvision.utils.save_image(rendering, os.path.join(render_path, fn))
+        torchvision.utils.save_image(gt, os.path.join(gts_path, fn))
 
         # metrics
-        psnrs += psnr(rendering, gt).mean().double()
-        ssims += ssim(rendering, gt).mean().double()
-        lpipss += loss_fn_vgg(rendering, gt).mean().double()
+        rendering_img = torch.tensor(cv2.imread(os.path.join(render_path, fn)) / 255.).cuda()
+        gt_img = torch.tensor(cv2.imread(os.path.join(gts_path, fn)) / 255.).cuda()
+        rendering_img = rendering_img.permute(2, 1, 0).float()
+        gt_img = gt_img.permute(2, 1, 0).float()
+
+        psnrs += psnr(rendering_img, gt_img)
+        ssims += ssim(rendering_img, gt_img)
+        lpipss += loss_fn_vgg(rendering_img, gt_img, normalize=True).mean()
 
     psnrs /= len(views)   
     ssims /= len(views)
@@ -90,7 +102,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     # evalution metrics
     print("\n[ITER {}] Evaluating {} #{}: PSNR {} SSIM {} LPIPS {}".format(iteration, name, len(views), psnrs, ssims, lpipss))
 
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool):
+def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train: bool, skip_novel_pose : bool, skip_novel_view : bool):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree, dataset.smpl_type, dataset.motion_offset_flag, dataset.actor_gender)
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
@@ -98,11 +110,17 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
-        if not skip_train:
-             render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
+        # if not skip_train:
+        #      render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
 
-        if not skip_test:
-             render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
+        # if not skip_test:
+        #      render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
+
+        if not skip_novel_pose:
+             render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background)
+
+        if not skip_novel_view:
+             render_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background)
 
 if __name__ == "__main__":
     # Set up command line argument parser
@@ -111,7 +129,9 @@ if __name__ == "__main__":
     pipeline = PipelineParams(parser)
     parser.add_argument("--iteration", default=-1, type=int)
     parser.add_argument("--skip_train", action="store_true")
-    parser.add_argument("--skip_test", action="store_true")
+    # parser.add_argument("--skip_test", action="store_true")
+    parser.add_argument("--skip_novel_pose", action="store_true")
+    parser.add_argument("--skip_novel_view", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
@@ -119,4 +139,4 @@ if __name__ == "__main__":
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
-    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_test)
+    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_novel_pose, args.skip_novel_view)

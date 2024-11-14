@@ -41,13 +41,15 @@ class Scene:
 
         self.train_cameras = {}
         self.test_cameras = {}
+        self.novel_pose_cameras = {}
+        self.novel_view_cameras = {}
 
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
-        elif 'zju_mocap_refine' in args.source_path: #os.path.exists(os.path.join(args.source_path, "annots.npy")):
+        elif 'zju_mocap' in args.source_path: #os.path.exists(os.path.join(args.source_path, "annots.npy")):
             print("Found annots.json file, assuming ZJU_MoCap_refine data set!")
             scene_info = sceneLoadTypeCallbacks["ZJU_MoCap_refine"](args.source_path, args.white_background, args.exp_name, args.eval)
         elif 'monocap' in args.source_path:
@@ -66,6 +68,10 @@ class Scene:
             camlist = []
             if scene_info.test_cameras:
                 camlist.extend(scene_info.test_cameras)
+            if scene_info.novel_pose_cameras:
+                camlist.extend(scene_info.novel_pose_cameras)
+            if scene_info.novel_view_cameras:
+                camlist.extend(scene_info.novel_view_cameras)
             if scene_info.train_cameras:
                 camlist.extend(scene_info.train_cameras)
             for id, cam in enumerate(camlist):
@@ -84,6 +90,8 @@ class Scene:
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
             print("Loading Test Cameras")
             self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
+            self.novel_pose_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.novel_pose_cameras, resolution_scale, args)
+            self.novel_view_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.novel_view_cameras, resolution_scale, args)
 
         if self.loaded_iter:
             self.gaussians.load_ply(os.path.join(self.model_path,
@@ -118,3 +126,9 @@ class Scene:
 
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
+
+    def getNovelPoseCameras(self, scale=1.0):
+        return self.novel_pose_cameras[scale]
+
+    def getNovelViewCameras(self, scale=1.0):
+        return self.novel_view_cameras[scale]

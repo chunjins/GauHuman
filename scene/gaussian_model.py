@@ -69,10 +69,10 @@ class GaussianModel:
         self.device=torch.device('cuda', torch.cuda.current_device())
         # load SMPL model
         if smpl_type == 'smpl':
-            neutral_smpl_path = os.path.join('assets', f'SMPL_{actor_gender.upper()}.pkl')
+            neutral_smpl_path = os.path.join('../data/smpl-meta', f'SMPL_{actor_gender.upper()}.pkl')
             self.SMPL_NEUTRAL = SMPL_to_tensor(read_pickle(neutral_smpl_path), device=self.device)
         elif smpl_type == 'smplx':
-            neutral_smpl_path = os.path.join('assets/models/smplx', f'SMPLX_{actor_gender.upper()}.npz')
+            neutral_smpl_path = os.path.join('../data/smpl-meta/models/smplx', f'SMPLX_{actor_gender.upper()}.npz')
             params_init = dict(np.load(neutral_smpl_path, allow_pickle=True))
             self.SMPL_NEUTRAL = SMPL_to_tensor(params_init, device=self.device)
 

@@ -56,7 +56,7 @@ def loadCam(args, id, cam_info, resolution_scale):
     else:
         resized_bkgd_mask = None
 
-    return Camera(colmap_id=cam_info.uid, pose_id=cam_info.pose_id, R=cam_info.R, T=cam_info.T, K=cam_info.K, 
+    return Camera(colmap_id=cam_info.uid, pose_id=cam_info.pose_id, frame_id=cam_info.frame_id, cam_id=cam_info.cam_id, R=cam_info.R, T=cam_info.T, K=cam_info.K,
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
                   image_name=cam_info.image_name, uid=id, bkgd_mask=resized_bkgd_mask, 

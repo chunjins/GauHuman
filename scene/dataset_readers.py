@@ -9,7 +9,7 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-import os
+import os, math
 import sys
 from PIL import Image
 from typing import NamedTuple
@@ -35,6 +35,8 @@ from data.dna_rendering.dna_rendering_sample_code.SMCReader import SMCReader
 class CameraInfo(NamedTuple):
     uid: int
     pose_id: int
+    frame_id: int
+    cam_id: int
     R: np.array
     T: np.array
     K: np.array
@@ -58,6 +60,8 @@ class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
     train_cameras: list
     test_cameras: list
+    novel_pose_cameras: list
+    novel_view_cameras: list
     nerf_normalization: dict
     ply_path: str
 
@@ -547,28 +551,69 @@ def get_camera_extrinsics_zju_mocap_refine(view_index, val=False, camera_view_nu
     return extrinsics
 
 def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling=0.5, split='train', novel_view_vis=False):
+    META = {
+        "313": {"begin_train_frame": 0, "end_train_frame": 800, "frame_interval_train": 1, "end_eval_frame": 1000,
+                "frame_interval_eval": 30},
+        "315": {"begin_train_frame": 0, "end_train_frame": 1600, "frame_interval_train": 1, "end_eval_frame": 2000,
+                "frame_interval_eval": 30},
+        "377": {"begin_train_frame": 0, "end_train_frame": 456, "frame_interval_train": 1, "end_eval_frame": 570,
+                "frame_interval_eval": 30},
+        "386": {"begin_train_frame": 0, "end_train_frame": 432, "frame_interval_train": 1, "end_eval_frame": 540,
+                "frame_interval_eval": 30},
+        "387": {"begin_train_frame": 0, "end_train_frame": 432, "frame_interval_train": 1, "end_eval_frame": 540,
+                "frame_interval_eval": 30},
+        "390": {"begin_train_frame": 0, "end_train_frame": 937, "frame_interval_train": 1, "end_eval_frame": 1171,
+                "frame_interval_eval": 30},
+        "392": {"begin_train_frame": 0, "end_train_frame": 445, "frame_interval_train": 1, "end_eval_frame": 556,
+                "frame_interval_eval": 30},
+        "393": {"begin_train_frame": 0, "end_train_frame": 527, "frame_interval_train": 1, "end_eval_frame": 658,
+                "frame_interval_eval": 30},
+        "394": {"begin_train_frame": 0, "end_train_frame": 380, "frame_interval_train": 1,
+                "end_eval_frame": 475, "frame_interval_eval": 30,
+                "begin_geo_frame": 0, "end_geo_frame": 271, "frame_interval_geo": 30, },
+    }
     cam_infos = []
 
-    pose_start = 0
-    if split == 'train':
-        pose_interval = 5
-        pose_num = 100
-    elif split == 'test':
-        pose_start = 0
-        pose_interval = 30
-        pose_num = 17
+    sub = path.split('/')[-1]
+
+    i = META[sub]["begin_train_frame"]
+    i_intv = META[sub]["frame_interval_train"]
+    ni = META[sub]["end_train_frame"]
+
+    if split == 'test':
+        i = 0
+        i_intv = 30
+        ni = 17
+    elif split == 'novel_pose':
+        i = META[sub]["begin_train_frame"] + META[sub]["end_train_frame"]
+        ni = META[sub]["end_eval_frame"]
+        i_intv = META[sub]["frame_interval_eval"]
+    elif split == 'novel_view':
+        i = META[sub]["begin_train_frame"]
+        ni = META[sub]["end_train_frame"]
+        i_intv = META[sub]["frame_interval_eval"]
+
+    print('=======================================', split, i, ni, i_intv)
+
+    n_slice = max(0, ni - i)
+    pose_num = math.ceil(n_slice / i_intv)
 
     ann_file = os.path.join(path, 'annots.npy')
     annots = np.load(ann_file, allow_pickle=True).item()
     cams = annots['cams']
+    if split != 'train':
+        num_cams = len(cams["K"])
+        test_view = [i for i in range(num_cams) if i not in output_view]
+        output_view = test_view
+    
     ims = np.array([
         np.array(ims_data['ims'])[output_view]
-        for ims_data in annots['ims'][pose_start:pose_start + pose_num * pose_interval][::pose_interval]
+        for ims_data in annots['ims'][i:ni][::i_intv]
     ])
 
     cam_inds = np.array([
         np.arange(len(ims_data['ims']))[output_view]
-        for ims_data in annots['ims'][pose_start:pose_start + pose_num * pose_interval][::pose_interval]
+        for ims_data in annots['ims'][i:ni][::i_intv]
     ])
 
     if 'CoreView_313' in path or 'CoreView_315' in path:
@@ -608,13 +653,16 @@ def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling
                 view_index = 0
 
             # Load image, mask, K, D, R, T
-            image_path = os.path.join(path, ims[pose_index][view_index].replace('\\', '/'))
+            image_path = os.path.join(path, 'images', ims[pose_index][view_index].replace('\\', '/'))
             image_name = ims[pose_index][view_index].split('.')[0]
             image = np.array(imageio.imread(image_path).astype(np.float32)/255.)
 
             msk_path = image_path.replace('images', 'mask').replace('jpg', 'png')
             msk = imageio.imread(msk_path)
             msk = (msk != 0).astype(np.uint8)
+
+            cam_idx = int(ims[pose_index][view_index].split("/")[-2])
+            frame_idx = int(ims[pose_index][view_index].split("/")[-1].split(".")[0])
 
             if not novel_view_vis:
                 cam_ind = cam_inds[pose_index][view_index]
@@ -660,7 +708,7 @@ def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling
 
             # load smpl data 
             i = int(os.path.basename(image_path)[:-4])
-            vertices_path = os.path.join(path, 'smpl_vertices', '{}.npy'.format(i))
+            vertices_path = os.path.join(path, 'vertices', '{}.npy'.format(i))
             xyz = np.load(vertices_path).astype(np.float32)
 
             smpl_param_path = os.path.join(path, "smpl_params", '{}.npy'.format(i))
@@ -684,7 +732,7 @@ def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling
 
             bkgd_mask = Image.fromarray(np.array(msk*255.0, dtype=np.byte))
 
-            cam_infos.append(CameraInfo(uid=idx, pose_id=pose_index, R=R, T=T, K=K, FovY=FovY, FovX=FovX, image=image,
+            cam_infos.append(CameraInfo(uid=idx, pose_id=pose_index, frame_id=frame_idx, cam_id=cam_idx, R=R, T=T, K=K, FovY=FovY, FovX=FovX, image=image,
                             image_path=image_path, image_name=image_name, bkgd_mask=bkgd_mask, 
                             bound_mask=bound_mask, width=image.size[0], height=image.size[1], 
                             smpl_param=smpl_param, world_vertex=xyz, world_bound=world_bound, 
@@ -696,18 +744,26 @@ def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling
     return cam_infos
 
 def readZJUMoCapRefineInfo(path, white_background, output_path, eval):
-    train_view = [4]
-    test_view = [i for i in range(0, 23)]
-    test_view.remove(train_view[0])
+    train_view = [0]
+    # test_view = [i for i in range(0, 23)]
+    # test_view.remove(train_view[0])
 
     print("Reading Training Transforms")
     train_cam_infos = readCamerasZJUMoCapRefine(path, train_view, white_background, split='train')
     print("Reading Test Transforms")
-    test_cam_infos = readCamerasZJUMoCapRefine(path, test_view, white_background, split='test', novel_view_vis=False)
+    test_cam_infos = readCamerasZJUMoCapRefine(path, train_view, white_background, split='test', novel_view_vis=False)
+
+    print("Reading novel_pose Transforms")
+    novel_pose_cam_infos = readCamerasZJUMoCapRefine(path, train_view, white_background, split='novel_pose', novel_view_vis=False)
+
+    print("Reading novel_view Transforms")
+    novel_view_cam_infos = readCamerasZJUMoCapRefine(path, train_view, white_background, split='novel_view', novel_view_vis=False)
     
     if not eval:
         train_cam_infos.extend(test_cam_infos)
         test_cam_infos = []
+        novel_pose_cam_infos = []
+        novel_view_cam_infos = []
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
     if len(train_view) == 1:
@@ -734,6 +790,8 @@ def readZJUMoCapRefineInfo(path, white_background, output_path, eval):
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
+                           novel_pose_cameras=novel_pose_cam_infos,
+                           novel_view_cameras=novel_view_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
     return scene_info

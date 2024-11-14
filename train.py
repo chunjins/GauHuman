@@ -221,11 +221,14 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         # validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
         #                       {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
 
-        validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
-                              {'name': 'train', 'cameras' : scene.getTrainCameras()})
+        validation_configs = (
+                              {'name': 'novel_pose', 'cameras' : scene.getNovelPoseCameras()},
+                              {'name': 'novel_view', 'cameras' : scene.getNovelViewCameras()},
+                              {'name': 'train', 'cameras' : scene.getTrainCameras()},
+                              )
 
         smpl_rot = {}
-        smpl_rot['train'], smpl_rot['test'] = {}, {}
+        smpl_rot['train'], smpl_rot['novel_pose'], smpl_rot['novel_view'] = {}, {}, {}
         for config in validation_configs:
             if config['cameras'] and len(config['cameras']) > 0: 
                 l1_test = 0.0

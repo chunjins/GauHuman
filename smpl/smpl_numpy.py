@@ -18,7 +18,7 @@ class SMPL():
             'male': os.path.join(model_dir, MALE_PATH),
             'female': os.path.join(model_dir, FEMALE_PATH),
             # 'neutral': os.path.join(model_dir, NEUTRAL_PATH)
-            'neutral': os.path.join('assets/SMPL_NEUTRAL.pkl')
+            'neutral': os.path.join('../data/smpl-meta/SMPL_NEUTRAL.pkl')
         }
 
         with open(model_paths[sex], 'rb') as f:

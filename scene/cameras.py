@@ -15,7 +15,7 @@ import numpy as np
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix, getProjectionMatrix_refine
 
 class Camera(nn.Module):
-    def __init__(self, colmap_id, pose_id, R, T, K, FoVx, FoVy, image, gt_alpha_mask,
+    def __init__(self, colmap_id, pose_id, frame_id, cam_id, R, T, K, FoVx, FoVy, image, gt_alpha_mask,
                  image_name, uid,
                  bkgd_mask=None, bound_mask=None, smpl_param=None, 
                  world_vertex=None, world_bound=None, big_pose_smpl_param=None,
@@ -26,6 +26,8 @@ class Camera(nn.Module):
 
         self.uid = uid
         self.pose_id = pose_id
+        self.frame_id = frame_id
+        self.cam_id = cam_id
         self.colmap_id = colmap_id
         self.R = R
         self.T = T
