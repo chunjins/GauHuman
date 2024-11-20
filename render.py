@@ -80,7 +80,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         if "zju_mocap" in model_path:
             fn = f"camera_{int(views[id].cam_id)+1:02d}_frame_{int(views[id].frame_id):06d}.png"
         else:
-            fn = f"{id}.png"
+            fn = f"{id:04d}.png"
 
         torchvision.utils.save_image(rendering, os.path.join(render_path, fn))
         torchvision.utils.save_image(gt, os.path.join(gts_path, fn))
@@ -116,8 +116,8 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         # if not skip_test:
         #      render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
 
-        if not skip_novel_pose:
-             render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background)
+        # if not skip_novel_pose:
+        #      render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background)
 
         if not skip_novel_view:
              render_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background)
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     pipeline = PipelineParams(parser)
     parser.add_argument("--iteration", default=-1, type=int)
     parser.add_argument("--skip_train", action="store_true")
-    # parser.add_argument("--skip_test", action="store_true")
+    parser.add_argument("--skip_test", action="store_true")
     parser.add_argument("--skip_novel_pose", action="store_true")
     parser.add_argument("--skip_novel_view", action="store_true")
     parser.add_argument("--quiet", action="store_true")

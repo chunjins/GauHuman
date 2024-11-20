@@ -9,7 +9,7 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-import os, math
+import os, math, h5py
 import sys
 from PIL import Image
 from typing import NamedTuple
@@ -621,7 +621,7 @@ def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling
             ims[i] = [x.split('/')[0] + '/' + x.split('/')[1].split('_')[4] + '.jpg' for x in ims[i]]
 
 
-    smpl_model = SMPL(sex='neutral', model_dir='assets/SMPL_NEUTRAL_renderpeople.pkl')
+    smpl_model = SMPL(sex='neutral', model_dir='../data/smpl-meta/SMPL_NEUTRAL.pkl')
 
     # SMPL in canonical space
     big_pose_smpl_param = {}
@@ -718,6 +718,16 @@ def readCamerasZJUMoCapRefine(path, output_view, white_background, image_scaling
             smpl_param['Th'] = smpl_param['Th'].astype(np.float32)
             smpl_param['shapes'] = smpl_param['shapes'].astype(np.float32)
             smpl_param['poses'] = smpl_param['poses'].astype(np.float32)
+
+            # xyz_smpl, joints_smpl = smpl_model(smpl_param['poses'], smpl_param['shapes'].reshape(-1))
+            # xyz_smpl = (np.matmul(xyz_smpl, smpl_param['R'].transpose()) + smpl_param['Th']).astype(np.float32)
+            #
+            # import trimesh
+            # xyz_smpl_pcd = trimesh.PointCloud(xyz_smpl)
+            # xyz_pcd = trimesh.PointCloud(xyz)
+            # dir = '/ubc/cs/home/c/chunjins/chunjin_scratch1/project/project/humannerf/gauhuman/code/output/mvhuman/100846/temp'
+            # xyz_smpl_pcd.export(dir + '/xyz_smpl_pcd.ply')
+            # xyz_pcd.export(dir + '/xyz_pcd.ply')
 
             # obtain the original bounds for point sampling
             min_xyz = np.min(xyz, axis=0)
@@ -1050,6 +1060,157 @@ def readDNARenderingInfo(path, white_background, output_path, eval):
                            ply_path=ply_path)
     return scene_info
 
+##################################   MvHuman   ##################################
+
+def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train'):
+    cam_infos = []
+    # use data for humannerf
+    # sub = path.split('/')[-1]
+
+    if split == 'train':
+        path_data = f'{path}_training.h5'
+    else:
+        path_data = f'{path}_{split}.h5'
+
+    dataset = h5py.File(path_data, 'r')
+    img_shape = dataset['img_shape'][1:]
+    img_num = dataset['img_shape'][0]
+    smpl_model = SMPL(sex='neutral', model_dir='assets/SMPL_NEUTRAL_renderpeople.pkl')
+
+    # SMPL in canonical space
+    big_pose_smpl_param = {}
+    big_pose_smpl_param['R'] = np.eye(3).astype(np.float32)
+    big_pose_smpl_param['Th'] = np.zeros((1, 3)).astype(np.float32)
+    big_pose_smpl_param['shapes'] = np.zeros((1, 10)).astype(np.float32)
+    big_pose_smpl_param['poses'] = np.zeros((1, 72)).astype(np.float32)
+    big_pose_smpl_param['poses'][0, 5] = 45 / 180 * np.array(np.pi)
+    big_pose_smpl_param['poses'][0, 8] = -45 / 180 * np.array(np.pi)
+    big_pose_smpl_param['poses'][0, 23] = -30 / 180 * np.array(np.pi)
+    big_pose_smpl_param['poses'][0, 26] = 30 / 180 * np.array(np.pi)
+
+    big_pose_xyz, _ = smpl_model(big_pose_smpl_param['poses'], big_pose_smpl_param['shapes'].reshape(-1))
+    big_pose_xyz = (np.matmul(big_pose_xyz, big_pose_smpl_param['R'].transpose()) + big_pose_smpl_param['Th']).astype(
+        np.float32)
+
+    # obtain the original bounds for point sampling
+    big_pose_min_xyz = np.min(big_pose_xyz, axis=0)
+    big_pose_max_xyz = np.max(big_pose_xyz, axis=0)
+    big_pose_min_xyz -= 0.05
+    big_pose_max_xyz += 0.05
+    big_pose_world_bound = np.stack([big_pose_min_xyz, big_pose_max_xyz], axis=0)
+
+    idx = 0
+    for img_idx in range(img_num):
+
+        image = dataset['images'][img_idx].reshape(img_shape).astype('float32') / 255.
+        msk = dataset['masks'][img_idx].reshape(img_shape[0], img_shape[1])
+        msk = (msk != 0).astype(np.uint8)
+        image[msk == 0] = 1 if white_background else 0
+
+        K = dataset['cameras_K'][img_idx][:3,:3]
+        w2c = dataset['cameras_E'][img_idx]
+        # get the world-to-camera transform and set R, T
+        R = np.transpose(w2c[:3, :3])  # R is stored transposed due to 'glm' in CUDA code
+        T = w2c[:3, 3]
+
+        # Reduce the image resolution by ratio, then remove the back ground
+        ratio = image_scaling
+        if ratio != 1.:
+            H, W = int(image.shape[0] * ratio), int(image.shape[1] * ratio)
+            image = cv2.resize(image, (W, H), interpolation=cv2.INTER_AREA)
+            msk = cv2.resize(msk, (W, H), interpolation=cv2.INTER_NEAREST)
+            K[:2] = K[:2] * ratio
+
+        image = Image.fromarray(np.array(image * 255.0, dtype=np.byte), "RGB")
+
+        focalX = K[0, 0]
+        focalY = K[1, 1]
+        FovX = focal2fov(focalX, image.size[0])
+        FovY = focal2fov(focalY, image.size[1])
+
+        smpl_param = {}
+        Rh = dataset['global_orient'][img_idx]
+        smpl_param['R'] = cv2.Rodrigues(Rh)[0].astype(np.float32)
+        smpl_param['Th'] = dataset['Th'][img_idx][None]
+        smpl_param['poses'] = dataset['smpl_pose'][img_idx][None]
+        smpl_param['shapes'] = dataset['smpl_betas'][:][None]
+        xyz = dataset['smpl_verts'][img_idx]
+
+        # xyz, _ = smpl_model(smpl_param['poses'], smpl_param['shapes'].reshape(-1))
+        # xyz = (np.matmul(xyz, smpl_param['R'].transpose()) + smpl_param['Th']).astype(np.float32)
+
+        # obtain the original bounds for point sampling
+        min_xyz = np.min(xyz, axis=0)
+        max_xyz = np.max(xyz, axis=0)
+        min_xyz -= 0.05
+        max_xyz += 0.05
+        world_bound = np.stack([min_xyz, max_xyz], axis=0)
+
+        # get bounding mask and bcakground mask
+        bound_mask = get_bound_2d_mask(world_bound, K, w2c[:3], image.size[1], image.size[0])
+        bound_mask = Image.fromarray(np.array(bound_mask * 255.0, dtype=np.byte))
+
+        bkgd_mask = Image.fromarray(np.array(msk * 255.0, dtype=np.byte))
+
+        # dir = '/ubc/cs/home/c/chunjins/chunjin_scratch1/project/project/humannerf/gauhuman/code/output/mvhuman/100846/temp'
+        # cv2.imwrite(f'{dir}/bound_mask_{idx}.jpg', np.array(get_bound_2d_mask(world_bound, K, w2c[:3], image.size[1], image.size[0]) * 255.0, dtype=np.uint8))
+        # cv2.imwrite(f'{dir}/bkgd_mask_{idx}.jpg', np.array(msk * 255.0, dtype=np.uint8))
+
+
+        cam_infos.append(
+            CameraInfo(uid=idx, pose_id=idx, frame_id=idx, cam_id=idx, R=R, T=T, K=K, FovY=FovY,
+                       FovX=FovX, image=image,
+                       image_path=None, image_name=None, bkgd_mask=bkgd_mask,
+                       bound_mask=bound_mask, width=image.size[0], height=image.size[1],
+                       smpl_param=smpl_param, world_vertex=xyz, world_bound=world_bound,
+                       big_pose_smpl_param=big_pose_smpl_param, big_pose_world_vertex=big_pose_xyz,
+                       big_pose_world_bound=big_pose_world_bound))
+        idx += 1
+
+    return cam_infos
+
+
+def readCustomInfo(path, white_background, output_path, eval):
+    print("Reading Training Transforms")
+    train_cam_infos = readCamerasCustom(path, white_background, split='train')
+    print("Reading novel_view Transforms")
+    novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
+
+    if not eval:
+        train_cam_infos.extend(novel_view_cam_infos)
+        novel_view_cam_infos = []
+
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+    # if len(train_view) == 1:
+    #     nerf_normalization['radius'] = 1
+
+    # ply_path = os.path.join(path, "points3d.ply")
+    ply_path = os.path.join('output', output_path, "points3d.ply")
+    if not os.path.exists(ply_path):
+        # Since this data set has no colmap data, we start with random points
+        num_pts = 6890
+        print(f"Generating random point cloud ({num_pts})...")
+
+        # We create random points inside the bounds of the synthetic Blender scenes
+        xyz = train_cam_infos[0].big_pose_world_vertex
+
+        shs = np.random.random((num_pts, 3)) / 255.0
+        pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
+        storePly(ply_path, xyz, SH2RGB(shs) * 255)
+    try:
+        pcd = fetchPly(ply_path)
+    except:
+        pcd = None
+
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=[],
+                           novel_pose_cameras=[],
+                           novel_view_cameras=novel_view_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
+    return scene_info
+
 
 def prepare_smpl_params(smpl_path, pose_index):
     params_ori = dict(np.load(smpl_path, allow_pickle=True))['smpl'].item()
@@ -1116,4 +1277,5 @@ sceneLoadTypeCallbacks = {
     "ZJU_MoCap_refine" : readZJUMoCapRefineInfo,
     "MonoCap": readMonoCapdataInfo,
     "dna_rendering": readDNARenderingInfo,
+    'mvhuman': readCustomInfo
 }

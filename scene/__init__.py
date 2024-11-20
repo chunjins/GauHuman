@@ -58,6 +58,9 @@ class Scene:
         elif 'dna_rendering' in args.source_path:
             print("assuming dna_rendering data set!")
             scene_info = sceneLoadTypeCallbacks["dna_rendering"](args.source_path, args.white_background, args.exp_name, args.eval)
+        elif 'mvhuman' in args.source_path:
+            print("assuming dna_rendering data set!")
+            scene_info = sceneLoadTypeCallbacks["mvhuman"](args.source_path, args.white_background, args.exp_name, args.eval)
         else:
             assert False, "Could not recognize scene type!"
 
