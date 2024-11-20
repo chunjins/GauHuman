@@ -1175,10 +1175,13 @@ def readCustomInfo(path, white_background, output_path, eval):
     train_cam_infos = readCamerasCustom(path, white_background, split='train')
     print("Reading novel_view Transforms")
     novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
+    print("Reading novel_pose Transforms")
+    novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
 
     if not eval:
         train_cam_infos.extend(novel_view_cam_infos)
         novel_view_cam_infos = []
+        novel_pose_cam_infos = []
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
     # if len(train_view) == 1:
@@ -1205,7 +1208,7 @@ def readCustomInfo(path, white_background, output_path, eval):
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=[],
-                           novel_pose_cameras=[],
+                           novel_pose_cameras=novel_pose_cam_infos,
                            novel_view_cameras=novel_view_cam_infos,
                            nerf_normalization=nerf_normalization,
                            ply_path=ply_path)
@@ -1277,5 +1280,6 @@ sceneLoadTypeCallbacks = {
     "ZJU_MoCap_refine" : readZJUMoCapRefineInfo,
     "MonoCap": readMonoCapdataInfo,
     "dna_rendering": readDNARenderingInfo,
-    'mvhuman': readCustomInfo
+    'mvhuman': readCustomInfo,
+    'actorhq': readCustomInfo,
 }

@@ -116,8 +116,8 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         # if not skip_test:
         #      render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
 
-        # if not skip_novel_pose:
-        #      render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background)
+        if not skip_novel_pose:
+             render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background)
 
         if not skip_novel_view:
              render_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background)
