@@ -1176,7 +1176,8 @@ def readCustomInfo(path, white_background, output_path, eval):
     print("Reading novel_view Transforms")
     novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
     print("Reading novel_pose Transforms")
-    novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
+    # novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
+    novel_pose_cam_infos = []
 
     if not eval:
         train_cam_infos.extend(novel_view_cam_infos)
