@@ -1062,7 +1062,7 @@ def readDNARenderingInfo(path, white_background, output_path, eval):
 
 ##################################   MvHuman   ##################################
 
-def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train'):
+def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='train'):
     cam_infos = []
     # use data for humannerf
     # sub = path.split('/')[-1]
@@ -1185,8 +1185,8 @@ def readCustomInfo(path, white_background, output_path, eval):
     print("Reading Training Transforms")
     train_cam_infos = readCamerasCustom(path, white_background, split='train')
     print("Reading novel_view Transforms")
-    # novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
-    novel_view_cam_infos = []
+    novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
+    # novel_view_cam_infos = []
     print("Reading novel_pose Transforms")
     novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
     # novel_pose_cam_infos = []
