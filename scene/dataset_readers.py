@@ -1074,7 +1074,15 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
 
     dataset = h5py.File(path_data, 'r')
     img_shape = dataset['img_shape'][1:]
-    img_num = dataset['img_shape'][0]
+    # img_num = dataset['img_shape'][0]
+    # img_num_half = int(dataset['img_shape'][0]/2)
+    if split == 'train':
+        num_start = 0
+        num_end = dataset['img_shape'][0]
+    else:
+        num_start = 0 #int(dataset['img_shape'][0]/2)
+        num_end = dataset['img_shape'][0]
+
     smpl_model = SMPL(sex='neutral', model_dir='assets/SMPL_NEUTRAL_renderpeople.pkl')
 
     # SMPL in canonical space
@@ -1100,11 +1108,14 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
     big_pose_world_bound = np.stack([big_pose_min_xyz, big_pose_max_xyz], axis=0)
 
     idx = 0
-    for img_idx in range(img_num):
+    for img_idx in range(num_start, num_end):
 
         image = dataset['images'][img_idx].reshape(img_shape).astype('float32') / 255.
         msk = dataset['masks'][img_idx].reshape(img_shape[0], img_shape[1])
-        msk = (msk != 0).astype(np.uint8)
+        if np.max(msk) > 1:
+            msk = msk / 255.
+
+        msk = (msk > 0.5).astype(np.uint8)
         image[msk == 0] = 1 if white_background else 0
 
         K = dataset['cameras_K'][img_idx][:3,:3]
@@ -1174,7 +1185,8 @@ def readCustomInfo(path, white_background, output_path, eval):
     print("Reading Training Transforms")
     train_cam_infos = readCamerasCustom(path, white_background, split='train')
     print("Reading novel_view Transforms")
-    novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
+    # novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
+    novel_view_cam_infos = []
     print("Reading novel_pose Transforms")
     novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
     # novel_pose_cam_infos = []

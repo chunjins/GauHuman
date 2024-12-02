@@ -1,4 +1,5 @@
 SEQUENCES=('377' '386' '387' '390' '392' '393' '394')
+SEQUENCES=('390')
 #SEQUENCES=('313')
 for SEQUENCE in ${SEQUENCES[@]}; do
     dataset="../data/zju_mocap/$SEQUENCE"
