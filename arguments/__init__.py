@@ -54,8 +54,10 @@ class ModelParams(ParamGroup):
         self._white_background = False
         self.data_device = "cuda"
         self.eval = False
+        self.split = 'train'
+        self.img_scale = 1.0
         self.exp_name = ""
-        self.smpl_type = "smplx"
+        self.smpl_type = "smpl"
         self.actor_gender = "neutral"
         self.motion_offset_flag = False
         super().__init__(parser, "Loading Parameters", sentinel)

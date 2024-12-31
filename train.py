@@ -17,8 +17,6 @@ from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
-import uuid
-import imageio
 import numpy as np
 import cv2
 import pickle
@@ -36,7 +34,8 @@ import lpips
 loss_fn_vgg = lpips.LPIPS(net='vgg').to(torch.device('cuda', torch.cuda.current_device()))
 
 import time
-import torch.nn.functional as F
+
+torch.cuda.empty_cache()
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
@@ -192,7 +191,7 @@ def prepare_output_and_logger(args):
         # else:
         #     unique_str = str(uuid.uuid4())
         # args.model_path = os.path.join("./output/", unique_str[0:10])
-        args.model_path = os.path.join("./output/", args.exp_name)
+        args.model_path = os.path.join("../output/", args.exp_name)
 
         
     # Set up output folder
@@ -222,8 +221,8 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         #                       {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
 
         validation_configs = (
-                              {'name': 'novel_pose', 'cameras' : scene.getNovelPoseCameras()},
-                              {'name': 'novel_view', 'cameras' : scene.getNovelViewCameras()},
+                              # {'name': 'novel_pose', 'cameras' : scene.getNovelPoseCameras()},
+                              # {'name': 'novel_view', 'cameras' : scene.getNovelViewCameras()},
                               {'name': 'train', 'cameras' : scene.getTrainCameras()},
                               )
 

@@ -492,7 +492,7 @@ def readMonoCapdataInfo(path, white_background, output_path, eval):
         nerf_normalization['radius'] = 1
 
     # ply_path = os.path.join(path, "points3d.ply")
-    ply_path = os.path.join('output', output_path, "points3d.ply")
+    ply_path = os.path.join('../output', output_path, "points3d.ply")
     if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
         num_pts = 6890 #100_000
@@ -779,7 +779,7 @@ def readZJUMoCapRefineInfo(path, white_background, output_path, eval):
     if len(train_view) == 1:
         nerf_normalization['radius'] = 1
 
-    ply_path = os.path.join('output', output_path, "points3d.ply")
+    ply_path = os.path.join('../output', output_path, "points3d.ply")
     if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
         num_pts = 6890 #100_000
@@ -1036,7 +1036,7 @@ def readDNARenderingInfo(path, white_background, output_path, eval):
         nerf_normalization['radius'] = 1
 
     # ply_path = os.path.join(path, "points3d.ply")
-    ply_path = os.path.join('output', output_path, "points3d.ply")
+    ply_path = os.path.join('../output', output_path, "points3d.ply")
     if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
         num_pts = 10475
@@ -1062,7 +1062,7 @@ def readDNARenderingInfo(path, white_background, output_path, eval):
 
 ##################################   MvHuman   ##################################
 
-def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='train'):
+def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train', frame_train=-1):
     cam_infos = []
     # use data for humannerf
     # sub = path.split('/')[-1]
@@ -1074,14 +1074,18 @@ def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='tra
 
     dataset = h5py.File(path_data, 'r')
     img_shape = dataset['img_shape'][1:]
-    # img_num = dataset['img_shape'][0]
-    # img_num_half = int(dataset['img_shape'][0]/2)
+
     if split == 'train':
         num_start = 0
-        num_end = dataset['img_shape'][0]
+        if frame_train > -1:
+            num_end = frame_train
+        else:
+            num_end = dataset['img_shape'][0]
     else:
-        num_start = 0 #int(dataset['img_shape'][0]/2)
+        num_start = 0
         num_end = dataset['img_shape'][0]
+
+    print(f'============{split} data from {num_start} to {num_end}' )
 
     smpl_model = SMPL(sex='neutral', model_dir='assets/SMPL_NEUTRAL_renderpeople.pkl')
 
@@ -1109,7 +1113,7 @@ def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='tra
 
     idx = 0
     for img_idx in range(num_start, num_end):
-
+        image_name = dataset['frames_name'][img_idx].decode('UTF-8')
         image = dataset['images'][img_idx].reshape(img_shape).astype('float32') / 255.
         msk = dataset['masks'][img_idx].reshape(img_shape[0], img_shape[1])
         if np.max(msk) > 1:
@@ -1140,9 +1144,9 @@ def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='tra
         FovY = focal2fov(focalY, image.size[1])
 
         smpl_param = {}
-        Rh = dataset['global_orient'][img_idx]
+        Rh = dataset['smpl_Rh'][img_idx]
         smpl_param['R'] = cv2.Rodrigues(Rh)[0].astype(np.float32)
-        smpl_param['Th'] = dataset['Th'][img_idx][None]
+        smpl_param['Th'] = dataset['smpl_Th'][img_idx][None]
         smpl_param['poses'] = dataset['smpl_pose'][img_idx][None]
         smpl_param['shapes'] = dataset['smpl_betas'][:][None]
         xyz = dataset['smpl_verts'][img_idx]
@@ -1171,7 +1175,7 @@ def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='tra
         cam_infos.append(
             CameraInfo(uid=idx, pose_id=idx, frame_id=idx, cam_id=idx, R=R, T=T, K=K, FovY=FovY,
                        FovX=FovX, image=image,
-                       image_path=None, image_name=None, bkgd_mask=bkgd_mask,
+                       image_path=None, image_name=image_name, bkgd_mask=bkgd_mask,
                        bound_mask=bound_mask, width=image.size[0], height=image.size[1],
                        smpl_param=smpl_param, world_vertex=xyz, world_bound=world_bound,
                        big_pose_smpl_param=big_pose_smpl_param, big_pose_world_vertex=big_pose_xyz,
@@ -1181,27 +1185,44 @@ def readCamerasCustom(path, white_background=True, image_scaling=0.5, split='tra
     return cam_infos
 
 
-def readCustomInfo(path, white_background, output_path, eval):
-    print("Reading Training Transforms")
-    train_cam_infos = readCamerasCustom(path, white_background, split='train')
-    print("Reading novel_view Transforms")
-    novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
-    # novel_view_cam_infos = []
-    print("Reading novel_pose Transforms")
-    novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
-    # novel_pose_cam_infos = []
+def readCustomInfo(path, white_background, output_path, eval, split='train', img_scale=1.0):
+    train_cam_infos = []
+    novel_view_cam_infos = []
+    novel_pose_cam_infos = []
+    if split == 'train':
+        print("Reading Training Transforms")
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
+    elif split == 'novel_pose':
+        print("Reading novel_pose Transforms")
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
+        novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
+    elif split == 'novel_view':
+        print("Reading novel_view Transforms")
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
+        novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='novel_view')
 
-    if not eval:
-        train_cam_infos.extend(novel_view_cam_infos)
-        novel_view_cam_infos = []
-        novel_pose_cam_infos = []
+
+    # print("Reading Training Transforms")
+    # train_cam_infos = readCamerasCustom(path, white_background, split='train')
+    # # train_cam_infos = []
+    # print("Reading novel_view Transforms")
+    # novel_view_cam_infos = readCamerasCustom(path, white_background, split='novel_view')
+    # # novel_view_cam_infos = []
+    # print("Reading novel_pose Transforms")
+    # novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
+    # # novel_pose_cam_infos = []
+
+    # if not eval:
+    #     train_cam_infos.extend(novel_view_cam_infos)
+    #     novel_view_cam_infos = []
+    #     novel_pose_cam_infos = []
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
     # if len(train_view) == 1:
     #     nerf_normalization['radius'] = 1
 
     # ply_path = os.path.join(path, "points3d.ply")
-    ply_path = os.path.join('output', output_path, "points3d.ply")
+    ply_path = os.path.join('../output', output_path, "points3d.ply")
     if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
         num_pts = 6890
@@ -1293,7 +1314,8 @@ sceneLoadTypeCallbacks = {
     # "ZJU_MoCap_refine" : readZJUMoCapRefineInfo,
     "ZJU_MoCap_refine" : readCustomInfo,
     "MonoCap": readMonoCapdataInfo,
-    "dna_rendering": readDNARenderingInfo,
+    "dna_rendering": readCustomInfo,
     'mvhuman': readCustomInfo,
     'actorhq': readCustomInfo,
+    'mpi': readCustomInfo,
 }

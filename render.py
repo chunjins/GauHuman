@@ -29,16 +29,16 @@ from utils.loss_utils import ssim
 import lpips
 loss_fn_vgg = lpips.LPIPS(net='vgg').to(torch.device('cuda', torch.cuda.current_device()))
 
-def render_set(model_path, name, iteration, views, gaussians, pipeline, background):
+def render_set(model_path, name, iteration, views, gaussians, pipeline, background, smpl_rot):
     render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
     gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
 
     makedirs(render_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
 
-    # Load data (deserialize)
-    with open(model_path + '/smpl_rot/' + f'iteration_{iteration}/' + 'smpl_rot.pickle', 'rb') as handle:
-        smpl_rot = pickle.load(handle)
+    # # Load data (deserialize)
+    # with open(model_path + '/smpl_rot/' + f'iteration_{iteration}/' + 'smpl_rot.pickle', 'rb') as handle:
+    #     smpl_rot = pickle.load(handle)
 
     rgbs = []
     rgbs_gt = []
@@ -80,7 +80,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         if "zju_mocap" in model_path:
             fn = f"camera_{int(views[id].cam_id)+1:02d}_frame_{int(views[id].frame_id):06d}.png"
         else:
-            fn = f"{id:04d}.png"
+            fn = views[id].image_name+'.png'
 
         torchvision.utils.save_image(rendering, os.path.join(render_path, fn))
         torchvision.utils.save_image(gt, os.path.join(gts_path, fn))
@@ -102,7 +102,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     # evalution metrics
     print("\n[ITER {}] Evaluating {} #{}: PSNR {} SSIM {} LPIPS {}".format(iteration, name, len(views), psnrs, ssims, lpipss))
 
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train: bool, skip_novel_pose : bool, skip_novel_view : bool):
+def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, split: str):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree, dataset.smpl_type, dataset.motion_offset_flag, dataset.actor_gender)
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
@@ -110,17 +110,35 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
+        validation_configs = (
+            {'name': 'novel_pose', 'cameras' : scene.getNovelPoseCameras()},
+            {'name': 'novel_view', 'cameras' : scene.getNovelViewCameras()},
+            # {'name': 'train', 'cameras': scene.getTrainCameras()},
+        )
+
+        smpl_rot = {}
+        smpl_rot['train'], smpl_rot['novel_pose'], smpl_rot['novel_view'] = {}, {}, {}
+        for config in validation_configs:
+            if config['cameras'] and len(config['cameras']) > 0:
+                for idx, viewpoint in enumerate(config['cameras']):
+                    smpl_rot[config['name']][viewpoint.pose_id] = {}
+                    render_output = render(viewpoint, scene.gaussians, pipeline, background, return_smpl_rot=True)
+                    smpl_rot[config['name']][viewpoint.pose_id]['transforms'] = render_output['transforms']
+                    smpl_rot[config['name']][viewpoint.pose_id]['translation'] = render_output['translation']
+
         # if not skip_train:
         #      render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
 
         # if not skip_test:
         #      render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
 
-        if not skip_novel_pose:
-             render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background)
+        # if not skip_novel_pose:
+        #      render_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background, smpl_rot)
+        #
+        # if not skip_novel_view:
+        #      render_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background, smpl_rot)
 
-        if not skip_novel_view:
-             render_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background)
+        render_set(dataset.model_path, split, scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background, smpl_rot)
 
 if __name__ == "__main__":
     # Set up command line argument parser
@@ -139,4 +157,4 @@ if __name__ == "__main__":
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
-    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.skip_train, args.skip_novel_pose, args.skip_novel_view)
+    render_sets(model.extract(args), args.iteration, pipeline.extract(args), args.split)
