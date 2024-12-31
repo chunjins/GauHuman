@@ -56,6 +56,8 @@ class ModelParams(ParamGroup):
         self.eval = False
         self.split = 'train'
         self.img_scale = 1.0
+        self.eval_start = 0
+        self.eval_end = -1
         self.exp_name = ""
         self.smpl_type = "smpl"
         self.actor_gender = "neutral"

@@ -1062,7 +1062,7 @@ def readDNARenderingInfo(path, white_background, output_path, eval):
 
 ##################################   MvHuman   ##################################
 
-def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train', frame_train=-1):
+def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train', frame_train=-1, eval_start=0, eval_end=-1):
     cam_infos = []
     # use data for humannerf
     # sub = path.split('/')[-1]
@@ -1082,8 +1082,11 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
         else:
             num_end = dataset['img_shape'][0]
     else:
-        num_start = 0
-        num_end = dataset['img_shape'][0]
+        num_start = eval_start
+        if eval_end == -1:
+            num_end = dataset['img_shape'][0]
+        else:
+            num_end = eval_end
 
     print(f'============{split} data from {num_start} to {num_end}' )
 
@@ -1185,7 +1188,7 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
     return cam_infos
 
 
-def readCustomInfo(path, white_background, output_path, eval, split='train', img_scale=1.0):
+def readCustomInfo(path, white_background, output_path, eval, split='train', img_scale=1.0 , eval_start=0, eval_end=-1):
     train_cam_infos = []
     novel_view_cam_infos = []
     novel_pose_cam_infos = []
@@ -1194,12 +1197,12 @@ def readCustomInfo(path, white_background, output_path, eval, split='train', img
         train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
     elif split == 'novel_pose':
         print("Reading novel_pose Transforms")
-        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
-        novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose')
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1)
+        novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose',eval_start=eval_start, eval_end=eval_end)
     elif split == 'novel_view':
         print("Reading novel_view Transforms")
-        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
-        novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='novel_view')
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1,)
+        novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='novel_view', eval_start=eval_start, eval_end=eval_end)
 
 
     # print("Reading Training Transforms")
@@ -1220,6 +1223,7 @@ def readCustomInfo(path, white_background, output_path, eval, split='train', img
     nerf_normalization = getNerfppNorm(train_cam_infos)
     # if len(train_view) == 1:
     #     nerf_normalization['radius'] = 1
+
 
     # ply_path = os.path.join(path, "points3d.ply")
     ply_path = os.path.join('../output', output_path, "points3d.ply")
