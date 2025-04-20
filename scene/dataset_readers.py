@@ -1322,4 +1322,5 @@ sceneLoadTypeCallbacks = {
     'mvhuman': readCustomInfo,
     'actorhq': readCustomInfo,
     'mpi': readCustomInfo,
+    'synwild': readCustomInfo,
 }

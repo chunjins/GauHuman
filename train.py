@@ -10,6 +10,9 @@
 #
 
 import os
+os.environ["CC"] = "/ubc/cs/home/c/chunjins/chunjin_scratch/software/cuda/gcc/gcc_exe/bin/gcc-gcc-9.5.0"
+os.environ["CXX"] = "/ubc/cs/home/c/chunjins/chunjin_scratch/software/cuda/gcc/gcc_exe/bin/g++-gcc-9.5.0"
+
 import torch
 from random import randint
 from utils.loss_utils import l1_loss, l2_loss, ssim

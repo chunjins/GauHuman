@@ -214,7 +214,7 @@ def rotate_y(theta):
                      [-sin,  0,  cos, 0],
                      [0,   0,      0, 1]], dtype=np.float32)
 
-def get_camera_motion_bullet(c2w, n_bullet=15, axis='y'):
+def get_camera_motion_bullet(c2w, n_bullet=16, axis='y'):
     if axis == 'y':
         rotate_fn = rotate_y
     elif axis == 'x':

@@ -8,11 +8,13 @@
 #
 # For inquiries contact  george.drettakis@inria.fr
 #
+import os
+os.environ["CC"] = "/ubc/cs/home/c/chunjins/chunjin_scratch/software/cuda/gcc/gcc_exe/bin/gcc-gcc-9.5.0"
+os.environ["CXX"] = "/ubc/cs/home/c/chunjins/chunjin_scratch/software/cuda/gcc/gcc_exe/bin/g++-gcc-9.5.0"
 
 import torch
 import cv2
 from scene import Scene
-import os
 import time
 import pickle
 from tqdm import tqdm
@@ -27,10 +29,12 @@ import numpy as np
 from utils.image_utils import psnr
 from utils.loss_utils import ssim
 import lpips
+import sys
 import copy
 import open3d as o3d
 from utils.mesh_utils import GaussianExtractor, post_process_mesh
 loss_fn_vgg = lpips.LPIPS(net='vgg').to(torch.device('cuda', torch.cuda.current_device()))
+
 
 
 def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background, smpl_rot):
@@ -49,17 +53,34 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
         c2ws_x = get_camera_motion_bullet(c2w, axis='x')
         c2ws = np.concatenate([c2ws_x, c2ws_y, c2ws_z], axis=0)
         mesh_views = []
+        transforms, translation = smpl_rot[name][view.pose_id]['transforms'], smpl_rot[name][view.pose_id]['translation']
+
         for i in range(1, c2ws.shape[0]):
             view_i = copy.deepcopy(view)
             Ei = np.linalg.inv(c2ws[i])
             view_i.setE(Ei)
             mesh_views.append(view_i)
 
-        transforms, translation = smpl_rot[name][view.pose_id]['transforms'], smpl_rot[name][view.pose_id][
-            'translation']
+            render_output = render(view_i, gaussians, pipeline, background, transforms=transforms, translation=translation)
+            rendering = render_output["render"]
+            depth = render_output["render_depth"]
+            alpha = render_output["render_alpha"]
+
+            rendering.permute(1, 2, 0)[alpha[0] <= 0.] = 0 if background.sum().item() == 0 else 1
+
+            render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
+            makedirs(render_path, exist_ok=True)
+            if "zju_mocap" in model_path:
+                fn = f"camera_{int(views[id].cam_id) + 1:02d}_frame_{int(views[id].frame_id):06d}_{i:02d}.png"
+            else:
+                fn = views[id].image_name + f'_{i:02d}.png'
+
+            img_save = torch.cat([rendering], dim=-1)
+            torchvision.utils.save_image(img_save, os.path.join(render_path, fn))
 
         gaussExtractor.reconstruction(render, mesh_views, gaussians, pipeline, background, transforms, translation)
-        mesh = gaussExtractor.extract_mesh_bounded()
+        # mesh = gaussExtractor.extract_mesh_bounded()
+        mesh = gaussExtractor.extract_mesh_unbounded(resolution=512)
         name_save = f"{view.image_name}_bounded.ply"
         o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save), mesh)
         print("mesh saved at {}".format(os.path.join(mesh_path, name_save)))
@@ -203,7 +224,9 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         # if not skip_novel_view:
         #      render_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background, smpl_rot)
 
-        if split == 'novel_view':
+        if split == 'train':
+            render_set(dataset.model_path, split, scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, smpl_rot)
+        elif split == 'novel_view':
             render_set(dataset.model_path, split, scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background, smpl_rot)
         elif split == 'novel_pose':
             render_set(dataset.model_path, split, scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background, smpl_rot)
