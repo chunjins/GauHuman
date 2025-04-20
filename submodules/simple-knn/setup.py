@@ -18,6 +18,9 @@ cxx_compiler_flags = []
 if os.name == 'nt':
     cxx_compiler_flags.append("/wd4624")
 
+os.environ["CC"] = "/ubc/cs/home/c/chunjins/chunjin_scratch/software/cuda/gcc/gcc_exe/bin/gcc-gcc-9.5.0"
+os.environ["CXX"] = "/ubc/cs/home/c/chunjins/chunjin_scratch/software/cuda/gcc/gcc_exe/bin/g++-gcc-9.5.0"
+
 setup(
     name="simple_knn",
     ext_modules=[

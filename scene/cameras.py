@@ -72,6 +72,13 @@ class Camera(nn.Module):
         self.big_pose_world_vertex = torch.tensor(big_pose_world_vertex).to(self.data_device)
         self.big_pose_world_bound = torch.tensor(big_pose_world_bound).to(self.data_device)
 
+    def setE(self, E):
+        R = E[:3, :3]
+        T = E[:3, 3]
+        self.world_view_transform = torch.tensor(getWorld2View2(R, T, self.trans, self.scale)).transpose(0, 1).cuda()
+        self.full_proj_transform = ( self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
+
+
 class MiniCam:
     def __init__(self, width, height, fovy, fovx, znear, zfar, world_view_transform, full_proj_transform):
         self.image_width = width

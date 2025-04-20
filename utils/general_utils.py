@@ -14,6 +14,7 @@ import sys
 from datetime import datetime
 import numpy as np
 import random
+import math
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
@@ -138,3 +139,94 @@ def safe_state(silent):
     np.random.seed(0)
     torch.manual_seed(0)
     torch.cuda.set_device(torch.device("cuda:0"))
+
+def depths_to_points(view, depthmap):
+    c2w = (view.world_view_transform.T).inverse()
+    W, H = view.image_width, view.image_height
+    fx = W / (2 * math.tan(view.FoVx / 2.))
+    fy = H / (2 * math.tan(view.FoVy / 2.))
+    intrins = torch.tensor(
+        [[fx, 0., W/2.],
+        [0., fy, H/2.],
+        [0., 0., 1.0]]
+    ).float().cuda()
+    grid_x, grid_y = torch.meshgrid(torch.arange(W, device='cuda').float() + 0.5, torch.arange(H, device='cuda').float() + 0.5, indexing='xy')
+    points = torch.stack([grid_x, grid_y, torch.ones_like(grid_x)], dim=-1).reshape(-1, 3)
+    rays_d = points @ intrins.inverse().T #@ c2w[:3,:3].T
+    # rays_o = c2w[:3,3]
+    points = depthmap.reshape(-1, 1) * rays_d #+ rays_o
+    return points
+
+def depth_to_normal(view, depth):
+    """
+        view: view camera
+        depth: depthmap
+    """
+    points = depths_to_points(view, depth).reshape(*depth.shape[1:], 3)
+    points[..., 1] = points[..., 1] * -1
+    points[..., 2] = points[..., 2] * -1
+    output = torch.zeros_like(points)
+    dx = torch.cat([points[2:, 1:-1] - points[:-2, 1:-1]], dim=0)
+    dy = torch.cat([points[1:-1, 2:] - points[1:-1, :-2]], dim=1)
+    normal_map = torch.nn.functional.normalize(torch.cross(dx, dy, dim=-1), dim=-1)
+    output[1:-1, 1:-1, :] = normal_map
+    return output, points
+
+def apply_depth_map(
+    depth_data,
+    accumulation,
+):
+    mask = accumulation > 0.5
+    depth_data[mask == 0] = 0
+    depth_fg = depth_data[mask]  ## value in range [0, 1]
+
+    if len(depth_fg) > 0:
+        min_val, max_val = torch.min(depth_fg), torch.max(depth_fg)
+        depth_normalized_foreground = 1 - (
+                (depth_fg - min_val) / (max_val - min_val)
+        )  ## for visualization, foreground is 1 (white), background is 0 (black)
+
+        depth_data[mask] = depth_normalized_foreground
+
+    depth_map = torch.cat((depth_data, depth_data, depth_data), axis=-1)
+    return depth_map
+
+def rotate_x(phi):
+    cos = np.cos(phi)
+    sin = np.sin(phi)
+    return np.array([[1,   0,    0, 0],
+                     [0, cos, -sin, 0],
+                     [0, sin,  cos, 0],
+                     [0,   0,    0, 1]], dtype=np.float32)
+
+def rotate_z(psi):
+    cos = np.cos(psi)
+    sin = np.sin(psi)
+    return np.array([[cos, -sin, 0, 0],
+                     [sin,  cos, 0, 0],
+                     [0,      0, 1, 0],
+                     [0,      0, 0, 1]], dtype=np.float32)
+def rotate_y(theta):
+    cos = np.cos(theta)
+    sin = np.sin(theta)
+    return np.array([[cos,   0,  sin, 0],
+                     [0,     1,    0, 0],
+                     [-sin,  0,  cos, 0],
+                     [0,   0,      0, 1]], dtype=np.float32)
+
+def get_camera_motion_bullet(c2w, n_bullet=15, axis='y'):
+    if axis == 'y':
+        rotate_fn = rotate_y
+    elif axis == 'x':
+        rotate_fn = rotate_x
+    elif axis == 'z':
+        rotate_fn = rotate_z
+    else:
+        raise NotImplementedError(f'rotate axis {axis} is not defined')
+
+    y_angles = np.linspace(0, math.radians(360), n_bullet + 1)[:-1]
+    c2ws = []
+    for a in y_angles:
+        c = rotate_fn(a) @ c2w
+        c2ws.append(c)
+    return np.array(c2ws)

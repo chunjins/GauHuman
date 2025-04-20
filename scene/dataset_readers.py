@@ -1192,14 +1192,14 @@ def readCustomInfo(path, white_background, output_path, eval, split='train', img
     train_cam_infos = []
     novel_view_cam_infos = []
     novel_pose_cam_infos = []
-    if split == 'train':
+    if split == 'train' or split == 'mesh_training':
         print("Reading Training Transforms")
         train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
-    elif split == 'novel_pose':
+    elif split == 'novel_pose' or split == 'mesh_novel_pose':
         print("Reading novel_pose Transforms")
         train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1)
         novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose',eval_start=eval_start, eval_end=eval_end)
-    elif split == 'novel_view':
+    elif split == 'novel_view' or split == 'mesh_novel_view':
         print("Reading novel_view Transforms")
         train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1,)
         novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='novel_view', eval_start=eval_start, eval_end=eval_end)
