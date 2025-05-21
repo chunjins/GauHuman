@@ -60,18 +60,16 @@ class Scene:
             scene_info = sceneLoadTypeCallbacks["dna_rendering"](args.source_path, args.white_background, args.exp_name, args.eval)
         elif 'mvhuman' in args.source_path:
             print("assuming mvhuman data set!")
-            scene_info = sceneLoadTypeCallbacks["mvhuman"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end)
+            scene_info = sceneLoadTypeCallbacks["mvhuman"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end, args.skip)
         elif 'actorhq' in args.source_path:
             print("assuming actorhq data set!")
-            scene_info = sceneLoadTypeCallbacks["actorhq"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end)
+            scene_info = sceneLoadTypeCallbacks["actorhq"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end, args.skip)
         elif 'mpi' in args.source_path:
             print("assuming mpi data set!")
-            scene_info = sceneLoadTypeCallbacks["mpi"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end)
+            scene_info = sceneLoadTypeCallbacks["mpi"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end, args.skip)
         elif 'synwild' in args.source_path:
             print("assuming synwild data set!")
-            scene_info = sceneLoadTypeCallbacks["synwild"](args.source_path, args.white_background, args.exp_name,
-                                                       args.eval, args.split, args.img_scale, args.eval_start,
-                                                       args.eval_end)
+            scene_info = sceneLoadTypeCallbacks["synwild"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end, args.skip)
 
         else:
             assert False, "Could not recognize scene type!"

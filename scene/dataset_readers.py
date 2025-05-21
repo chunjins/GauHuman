@@ -1062,7 +1062,7 @@ def readDNARenderingInfo(path, white_background, output_path, eval):
 
 ##################################   MvHuman   ##################################
 
-def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train', frame_train=-1, eval_start=0, eval_end=-1):
+def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='train', frame_train=-1, eval_start=0, eval_end=-1, skip=1):
     cam_infos = []
     # use data for humannerf
     # sub = path.split('/')[-1]
@@ -1070,7 +1070,10 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
     if split == 'train':
         path_data = f'{path}_training.h5'
     else:
-        path_data = f'{path}_{split}.h5'
+        dataset_name = split
+        if 'mesh' in split:
+            dataset_name = split.replace('mesh_', '')
+        path_data = f'{path}_{dataset_name}.h5'
 
     dataset = h5py.File(path_data, 'r')
     img_shape = dataset['img_shape'][1:]
@@ -1088,7 +1091,14 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
         else:
             num_end = eval_end
 
-    print(f'============{split} data from {num_start} to {num_end}' )
+    if 'mesh' in split:
+        Nframes = 20
+        frames_name = dataset['frames_name'][:]
+        frames_list = np.unique(np.array([name.decode('utf-8').split('_')[-1] for name in frames_name]))
+        num_end = len(frames_list)
+        skip =  int(len(frames_list) / Nframes)
+
+    print(f'============{split} data from {num_start} to {num_end} with skip as {skip}' )
 
     smpl_model = SMPL(sex='neutral', model_dir='assets/SMPL_NEUTRAL_renderpeople.pkl')
 
@@ -1115,7 +1125,7 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
     big_pose_world_bound = np.stack([big_pose_min_xyz, big_pose_max_xyz], axis=0)
 
     idx = 0
-    for img_idx in range(num_start, num_end):
+    for img_idx in range(num_start, num_end, skip):
         image_name = dataset['frames_name'][img_idx].decode('UTF-8')
         image = dataset['images'][img_idx].reshape(img_shape).astype('float32') / 255.
         msk = dataset['masks'][img_idx].reshape(img_shape[0], img_shape[1])
@@ -1188,21 +1198,33 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
     return cam_infos
 
 
-def readCustomInfo(path, white_background, output_path, eval, split='train', img_scale=1.0 , eval_start=0, eval_end=-1):
+def readCustomInfo(path, white_background, output_path, eval, split='train', img_scale=1.0 , eval_start=0, eval_end=-1, skip=1):
     train_cam_infos = []
     novel_view_cam_infos = []
     novel_pose_cam_infos = []
-    if split == 'train' or split == 'mesh_training':
+    if split == 'train':
         print("Reading Training Transforms")
-        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train')
-    elif split == 'novel_pose' or split == 'mesh_novel_pose':
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', skip=skip)
+    elif split == 'mesh_training':
+        print("Reading Training Transforms")
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='mesh_training')
+    elif split == 'novel_pose':
         print("Reading novel_pose Transforms")
         train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1)
-        novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose',eval_start=eval_start, eval_end=eval_end)
-    elif split == 'novel_view' or split == 'mesh_novel_view':
+        novel_pose_cam_infos = readCamerasCustom(path, white_background, split='novel_pose',eval_start=eval_start, eval_end=eval_end, skip=skip)
+    elif split == 'novel_view':
+        print("Reading novel_view Transforms")
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1)
+        novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='novel_view', eval_start=eval_start, eval_end=eval_end, skip=skip)
+
+    elif split == 'mesh_novel_pose':
+        print("Reading novel_pose Transforms")
+        train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1)
+        novel_pose_cam_infos = readCamerasCustom(path, white_background, split='mesh_novel_pose',eval_start=eval_start, eval_end=eval_end, skip=skip)
+    elif split == 'mesh_novel_view':
         print("Reading novel_view Transforms")
         train_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='train', frame_train=1,)
-        novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='novel_view', eval_start=eval_start, eval_end=eval_end)
+        novel_view_cam_infos = readCamerasCustom(path, white_background, image_scaling=img_scale, split='mesh_novel_view', eval_start=eval_start, eval_end=eval_end, skip=skip)
 
 
     # print("Reading Training Transforms")

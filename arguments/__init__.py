@@ -58,6 +58,7 @@ class ModelParams(ParamGroup):
         self.img_scale = 1.0
         self.eval_start = 0
         self.eval_end = -1
+        self.skip = 1
         self.exp_name = ""
         self.smpl_type = "smpl"
         self.actor_gender = "neutral"

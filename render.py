@@ -21,7 +21,7 @@ from tqdm import tqdm
 from os import makedirs
 from gaussian_renderer import render
 import torchvision
-from utils.general_utils import safe_state, depth_to_normal, apply_depth_map, get_camera_motion_bullet
+from utils.general_utils import safe_state, depth_to_normal, apply_depth_map, get_camera_motion_bullet, apply_depth_colormap
 from argparse import ArgumentParser
 from arguments import ModelParams, PipelineParams, get_combined_args
 from gaussian_renderer import GaussianModel
@@ -53,7 +53,8 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
         c2ws_x = get_camera_motion_bullet(c2w, axis='x')
         c2ws = np.concatenate([c2ws_x, c2ws_y, c2ws_z], axis=0)
         mesh_views = []
-        transforms, translation = smpl_rot[name][view.pose_id]['transforms'], smpl_rot[name][view.pose_id]['translation']
+        smpl_rot_name = name.replace('mesh_','').replace('ing','')
+        transforms, translation = smpl_rot[smpl_rot_name][view.pose_id]['transforms'], smpl_rot[smpl_rot_name][view.pose_id]['translation']
 
         for i in range(1, c2ws.shape[0]):
             view_i = copy.deepcopy(view)
@@ -68,20 +69,20 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
 
             rendering.permute(1, 2, 0)[alpha[0] <= 0.] = 0 if background.sum().item() == 0 else 1
 
-            render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
-            makedirs(render_path, exist_ok=True)
-            if "zju_mocap" in model_path:
-                fn = f"camera_{int(views[id].cam_id) + 1:02d}_frame_{int(views[id].frame_id):06d}_{i:02d}.png"
-            else:
-                fn = views[id].image_name + f'_{i:02d}.png'
+            # render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
+            # makedirs(render_path, exist_ok=True)
+            # if "zju_mocap" in model_path:
+            #     fn = f"camera_{int(views[id].cam_id) + 1:02d}_frame_{int(views[id].frame_id):06d}_{i:02d}.png"
+            # else:
+            #     fn = views[id].image_name + f'_{i:02d}.png'
 
-            img_save = torch.cat([rendering], dim=-1)
-            torchvision.utils.save_image(img_save, os.path.join(render_path, fn))
+            # img_save = torch.cat([rendering], dim=-1)
+            # torchvision.utils.save_image(img_save, os.path.join(render_path, fn))
 
         gaussExtractor.reconstruction(render, mesh_views, gaussians, pipeline, background, transforms, translation)
         # mesh = gaussExtractor.extract_mesh_bounded()
         mesh = gaussExtractor.extract_mesh_unbounded(resolution=512)
-        name_save = f"{view.image_name}_bounded.ply"
+        name_save = f"{view.image_name}.ply"
         o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save), mesh)
         print("mesh saved at {}".format(os.path.join(mesh_path, name_save)))
         # post-process the mesh and save, saving the largest N clusters
@@ -91,7 +92,7 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
 
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, smpl_rot):
-    render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
+    render_path = os.path.join(model_path, name+'_img_geo', "ours_{}".format(iteration), "renders")
     # gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
 
     makedirs(render_path, exist_ok=True)
@@ -104,7 +105,7 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
     rgbs = []
     rgbs_gt = []
     elapsed_time = 0
-
+    geometry_dict = {}
     for id, view in enumerate(tqdm(views, desc="Rendering progress")):
         gt = view.original_image[0:3, :, :].cuda()
         bound_mask = view.bound_mask
@@ -127,11 +128,17 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         # rendering.permute(1, 2, 0)[bound_mask[0] == 0] = 0 if background.sum().item() == 0 else 1
 
         depth_normal, _ = depth_to_normal(view, depth)
-        depth_normal = (depth_normal + 1.) / 2.
-        depth_normal = depth_normal.permute(2, 0, 1)
 
-        depth_map = apply_depth_map(depth[0, :, :, None], alpha[0, :, :, None])
-        depth_map = depth_map.permute(2, 0, 1)
+        geometry_map = torch.cat([alpha.permute(1, 2, 0), depth.permute(1, 2, 0), depth_normal], dim=-1)
+        geometry_dict[view.image_name] = geometry_map.detach().cpu().numpy()
+
+        depth_normal_image = (depth_normal + 1.) / 2.
+        depth_normal_image = depth_normal_image * alpha.permute(1, 2, 0) + (1 - alpha.permute(1, 2, 0))
+        depth_normal_image = depth_normal_image.permute(2, 0, 1)
+
+        depth_map_image = apply_depth_colormap(depth.permute(1, 2, 0), alpha.permute(1, 2, 0), near_plane=None, far_plane=None)
+        # depth_map = apply_depth_map(depth[0, :, :, None], alpha[0, :, :, None])
+        depth_map_image = depth_map_image.permute(2, 0, 1)
 
         rgbs.append(rendering)
         rgbs_gt.append(gt)
@@ -143,9 +150,10 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         else:
             fn = views[id].image_name+'.png'
 
-        img_save = torch.cat([rendering, depth_map, depth_normal], dim=-1)
+        img_save = torch.cat([rendering, depth_map_image, depth_normal_image], dim=-1)
         torchvision.utils.save_image(img_save, os.path.join(render_path, fn))
 
+    np.savez(os.path.join(model_path, f'geometry_{name}.npz'), **geometry_dict)
     # Calculate elapsed time
     print("Elapsed time: ", elapsed_time, " FPS: ", len(views)/elapsed_time) 
 
@@ -231,12 +239,12 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
         elif split == 'novel_pose':
             render_set(dataset.model_path, split, scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background, smpl_rot)
         elif split == 'mesh_training':
-            mesh_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, smpl_rot)
+            mesh_set(dataset.model_path, "mesh_training", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, smpl_rot)
             # render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background, smpl_rot)
         elif split == 'mesh_novel_pose':
-            mesh_set(dataset.model_path, "novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background, smpl_rot)
+            mesh_set(dataset.model_path, "mesh_novel_pose", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background, smpl_rot)
         elif split == 'mesh_novel_view':
-            mesh_set(dataset.model_path, "novel_view", scene.loaded_iter, scene.getNovelPoseCameras(), gaussians, pipeline, background, smpl_rot)
+            mesh_set(dataset.model_path, "mesh_novel_view", scene.loaded_iter, scene.getNovelViewCameras(), gaussians, pipeline, background, smpl_rot)
 
 if __name__ == "__main__":
     # Set up command line argument parser

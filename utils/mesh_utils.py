@@ -86,7 +86,7 @@ class GaussianExtractor(object):
         """
         if bg_color is None:
             bg_color = [0, 0, 0]
-        background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        background = torch.tensor(bg_color.detach(), dtype=torch.float32, device="cuda")
         self.gaussians = gaussians
         self.render = partial(render, pipe=pipe, bg_color=background)
         self.clean()
