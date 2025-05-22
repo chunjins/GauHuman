@@ -1126,7 +1126,7 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
 
     idx = 0
     for img_idx in range(num_start, num_end, skip):
-        image_name = dataset['frames_name'][img_idx].decode('UTF-8')
+        image_name = dataset['frames_name'][img_idx].decode('UTF-8').replace('.png', '')
         image = dataset['images'][img_idx].reshape(img_shape).astype('float32') / 255.
         msk = dataset['masks'][img_idx].reshape(img_shape[0], img_shape[1])
         if np.max(msk) > 1:
