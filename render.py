@@ -62,12 +62,12 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
             view_i.setE(Ei)
             mesh_views.append(view_i)
 
-            render_output = render(view_i, gaussians, pipeline, background, transforms=transforms, translation=translation)
-            rendering = render_output["render"]
-            depth = render_output["render_depth"]
-            alpha = render_output["render_alpha"]
+            # render_output = render(view_i, gaussians, pipeline, background, transforms=transforms, translation=translation)
+            # rendering = render_output["render"]
+            # depth = render_output["render_depth"]
+            # alpha = render_output["render_alpha"]
 
-            rendering.permute(1, 2, 0)[alpha[0] <= 0.] = 0 if background.sum().item() == 0 else 1
+            # rendering.permute(1, 2, 0)[alpha[0] <= 0.] = 0 if background.sum().item() == 0 else 1
 
             # render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
             # makedirs(render_path, exist_ok=True)
@@ -82,6 +82,12 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
         gaussExtractor.reconstruction(render, mesh_views, gaussians, pipeline, background, transforms, translation)
         # mesh = gaussExtractor.extract_mesh_bounded()
         mesh = gaussExtractor.extract_mesh_unbounded(resolution=512)
+        T = torch.eye(4)
+        T[:3,:3] = mesh_views[0].smpl_param['R']
+        T[:3,3] = mesh_views[0].smpl_param['Th']
+        T = torch.linalg.inv(T).cpu().numpy()
+        mesh.transform(T)
+
         name_save = f"{view.image_name}.ply"
         o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save), mesh)
         print("mesh saved at {}".format(os.path.join(mesh_path, name_save)))
