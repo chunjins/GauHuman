@@ -370,3 +370,83 @@ def generate_mesh(func, verts, level_set=0, res_init=32, res_up=3, point_batch=5
         meshexport = None
 
     return meshexport
+
+
+def create_multi_ellipsoid_mesh(gaussians, cov3D_precomp, colors_precomp, opacity, chi_square_val=3.53, num_points=5):
+    """
+    Create a combined mesh from multiple Gaussians.
+
+    Parameters:
+        gaussians (list of tuples): List of (mean, covariance) for each Gaussian.
+        chi_square_val (float): Determines confidence level (e.g., 3.53 for 95%).
+        num_points (int): Number of points to sample per axis for the mesh.
+
+    Returns:
+        Trimesh object: Combined mesh with multiple ellipsoids.
+    """
+    all_vertices = []
+    all_faces = []
+    all_vertex_colors = []
+    # base_color_map = cm.get_cmap("tab10", len(gaussians))  # Distinct colors for each Gaussian
+
+    vertex_offset = 0
+    for i, (mean, cov, color, alpha) in enumerate(zip(gaussians, cov3D_precomp, colors_precomp, opacity)):
+        vertices, faces = gaussian_to_ellipsoid_mesh(mean, cov, chi_square_val, num_points)
+        all_vertices.append(vertices)
+        all_faces.append(faces + vertex_offset)
+        vertex_offset += len(vertices)
+
+        # Assign a distinct color for this ellipsoid
+        vertex_colors = np.hstack((color, alpha.astype(np.float32)))
+        vertex_colors = np.tile(vertex_colors, (vertices.shape[0], 1))
+        all_vertex_colors.append(vertex_colors)
+
+    # Combine all components
+    all_vertices = np.vstack(all_vertices)
+    all_faces = np.vstack(all_faces)
+    all_vertex_colors = np.vstack(all_vertex_colors)
+
+    return trimesh.Trimesh(vertices=all_vertices, faces=all_faces, vertex_colors=all_vertex_colors)
+
+def gaussian_to_ellipsoid_mesh(mean, cov, chi_square_val=3.53, num_points=50):
+    """
+    Convert a 3D Gaussian to an ellipsoid mesh with colors.
+
+    Parameters:
+        mean (np.array): 3D mean vector of the Gaussian.
+        cov (np.array): 3x3 covariance matrix.
+        chi_square_val (float): Determines confidence level (e.g., 3.53 for 95%).
+        num_points (int): Number of points to sample per axis for the mesh.
+
+    Returns:
+        vertices, faces, vertex_colors (np.array): Vertices, faces, and colors of the ellipsoid mesh.
+    """
+    # Eigen decomposition of the covariance matrix
+    eigvals, eigvecs = np.linalg.eigh(cov)
+
+    # Scale eigenvalues by the chi-square value to get the axes lengths
+    axes_lengths = np.sqrt(eigvals * chi_square_val)
+
+    # Generate a sphere
+    u = np.linspace(0, 2 * np.pi, num_points)
+    v = np.linspace(0, np.pi, num_points)
+    x = np.outer(np.cos(u), np.sin(v))
+    y = np.outer(np.sin(u), np.sin(v))
+    z = np.outer(np.ones_like(u), np.cos(v))
+
+    # Flatten the sphere into a list of points
+    sphere_points = np.stack((x.ravel(), y.ravel(), z.ravel()), axis=1)
+
+    # Transform the sphere points into an ellipsoid
+    ellipsoid_points = sphere_points @ np.diag(axes_lengths) @ eigvecs.T + mean
+
+    # Generate faces for the mesh
+    faces = []
+    for i in range(num_points - 1):
+        for j in range(num_points - 1):
+            idx = i * num_points + j
+            faces.append([idx, idx + 1, idx + num_points])
+            faces.append([idx + 1, idx + num_points + 1, idx + num_points])
+    faces = np.array(faces)
+
+    return ellipsoid_points, faces

@@ -37,11 +37,20 @@ class GaussianModel:
                 actual_covariance = actual_covariance @ transform.transpose(1, 2)
             symm = strip_symmetric(actual_covariance)
             return symm
+
+        def build_covariance_from_scaling_rotation33(scaling, scaling_modifier, rotation, transform):
+            L = build_scaling_rotation(scaling_modifier * scaling, rotation)
+            actual_covariance = L @ L.transpose(1, 2)
+            if transform is not None:
+                actual_covariance = transform @ actual_covariance
+                actual_covariance = actual_covariance @ transform.transpose(1, 2)
+            return actual_covariance
         
         self.scaling_activation = torch.exp
         self.scaling_inverse_activation = torch.log
 
         self.covariance_activation = build_covariance_from_scaling_rotation
+        self.covariance_activation33 = build_covariance_from_scaling_rotation33
 
         self.opacity_activation = torch.sigmoid
         self.inverse_opacity_activation = inverse_sigmoid
@@ -153,6 +162,9 @@ class GaussianModel:
     
     def get_covariance(self, scaling_modifier = 1, transform=None):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation, transform)
+
+    def get_covariance33(self, scaling_modifier = 1, transform=None):
+        return self.covariance_activation33(self.get_scaling, scaling_modifier, self._rotation, transform)
 
     def oneupSHdegree(self):
         if self.active_sh_degree < self.max_sh_degree:
@@ -449,20 +461,9 @@ class GaussianModel:
         rotation_q = self._rotation[point_ids[0]].detach()
         scaling_diag = self.get_scaling[point_ids[0]].detach()
 
-        xyz_0 = xyz[:, 0].reshape(-1, 3)
-        rotation_0_q = rotation_q[:, 0].reshape(-1, 4)
-        scaling_diag_0 = scaling_diag[:, 0].reshape(-1, 3)
+        selected_pts_mask = selected_pts_mask
 
-        xyz_1 = xyz[:, 1:].reshape(-1, 3)
-        rotation_1_q = rotation_q[:, 1:].reshape(-1, 4)
-        scaling_diag_1 = scaling_diag[:, 1:].reshape(-1, 3)
-
-        kl_div = self.kl_div(xyz_0, rotation_0_q, scaling_diag_0, xyz_1, rotation_1_q, scaling_diag_1)
-        self.kl_selected_pts_mask = kl_div > kl_threshold
-
-        selected_pts_mask = selected_pts_mask & self.kl_selected_pts_mask
-
-        print("[kl clone]: ", (selected_pts_mask & self.kl_selected_pts_mask).sum().item())
+        print("[kl clone]: ", (selected_pts_mask).sum().item())
 
         stds = self.get_scaling[selected_pts_mask]
         means =torch.zeros((stds.size(0), 3),device="cuda")
@@ -492,20 +493,9 @@ class GaussianModel:
         rotation_q = self._rotation[point_ids[0]].detach()
         scaling_diag = self.get_scaling[point_ids[0]].detach()
 
-        xyz_0 = xyz[:, 0].reshape(-1, 3)
-        rotation_0_q = rotation_q[:, 0].reshape(-1, 4)
-        scaling_diag_0 = scaling_diag[:, 0].reshape(-1, 3)
+        selected_pts_mask = selected_pts_mask
 
-        xyz_1 = xyz[:, 1:].reshape(-1, 3)
-        rotation_1_q = rotation_q[:, 1:].reshape(-1, 4)
-        scaling_diag_1 = scaling_diag[:, 1:].reshape(-1, 3)
-
-        kl_div = self.kl_div(xyz_0, rotation_0_q, scaling_diag_0, xyz_1, rotation_1_q, scaling_diag_1)
-        self.kl_selected_pts_mask = kl_div > kl_threshold
-
-        selected_pts_mask = selected_pts_mask & self.kl_selected_pts_mask
-
-        print("[kl split]: ", (selected_pts_mask & self.kl_selected_pts_mask).sum().item())
+        print("[kl split]: ", (selected_pts_mask).sum().item())
 
         stds = self.get_scaling[selected_pts_mask].repeat(N,1)
         means =torch.zeros((stds.size(0), 3),device="cuda")
@@ -578,7 +568,7 @@ class GaussianModel:
         # self.densify_and_split(grads, max_grad, extent)
         self.kl_densify_and_clone(grads, max_grad, extent, kl_threshold)
         self.kl_densify_and_split(grads, max_grad, extent, kl_threshold)
-        self.kl_merge(grads, max_grad, extent, 0.1)
+        # self.kl_merge(grads, max_grad, extent, 0.1)
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:
@@ -587,12 +577,12 @@ class GaussianModel:
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
 
         # use smpl prior to prune points 
-        distance, _ = self.knn(t_vertices[None], self._xyz[None].detach())
-        distance = distance.view(distance.shape[0], -1)
-        threshold = 0.05
-        pts_mask = (distance > threshold).squeeze()
+        # distance, _ = self.knn(t_vertices[None], self._xyz[None].detach())
+        # distance = distance.view(distance.shape[0], -1)
+        # threshold = 0.05
+        # pts_mask = (distance > threshold).squeeze()
 
-        prune_mask = prune_mask | pts_mask
+        prune_mask = prune_mask #| pts_mask
 
         print('total points num: ', self._xyz.shape[0], 'prune num: ', prune_mask.sum().item())
         

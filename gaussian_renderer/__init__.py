@@ -14,8 +14,9 @@ import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
+from utils.mesh_utils import create_multi_ellipsoid_mesh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None, return_smpl_rot=False, transforms=None, translation=None):
+def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None, return_smpl_rot=False, transforms=None, translation=None, return_gs_mesh=False):
     """
     Render the scene. 
     
@@ -118,6 +119,16 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
 
+    gs_mesh = None
+    if return_gs_mesh:
+        shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree + 1) ** 2)
+        dir_pp = (means3D - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
+        dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
+        sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
+        colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
+        cov3D_33 = pc.get_covariance33(scaling_modifier, transforms.squeeze()).detach().cpu().numpy()
+        gs_mesh = create_multi_ellipsoid_mesh(means3D.detach().cpu().numpy(), cov3D_33, colors_precomp.cpu().numpy(), opacity.detach().cpu().numpy())
+
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
     return {"render": rendered_image,
@@ -128,4 +139,6 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             "radii": radii,
             "transforms": transforms,
             "translation": translation,
-            "correct_Rs": correct_Rs,}
+            "correct_Rs": correct_Rs,
+            "gs_mesh": gs_mesh,
+            }

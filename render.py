@@ -46,7 +46,7 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
     for id, view in enumerate(tqdm(views, desc="Rendering progress")):
         E = np.eye(4)
         E[:3, :3] = view.R
-        E[:3, 3] = view.T
+        E[:3, 3] = view.T + 0.5
         c2w = np.linalg.inv(E)
         c2ws_y = get_camera_motion_bullet(c2w, axis='y')
         c2ws_z = get_camera_motion_bullet(c2w, axis='z')
@@ -88,20 +88,24 @@ def mesh_set(model_path, name, iteration, views, gaussians, pipeline, background
         T = torch.linalg.inv(T).cpu().numpy()
         mesh.transform(T)
 
+        mesh_post = post_process_mesh(mesh, cluster_to_keep=1)
+
         name_save = f"{view.image_name}.ply"
-        o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save), mesh)
+        o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save), mesh_post)
         print("mesh saved at {}".format(os.path.join(mesh_path, name_save)))
         # post-process the mesh and save, saving the largest N clusters
-        mesh_post = post_process_mesh(mesh, cluster_to_keep=1)
-        o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save.replace('.ply', '_post.ply')), mesh_post)
-        print("mesh post processed saved at {}".format(os.path.join(mesh_path, name_save.replace('.ply', '_post.ply'))))
+        # mesh_post = post_process_mesh(mesh, cluster_to_keep=1)
+        # o3d.io.write_triangle_mesh(os.path.join(mesh_path, name_save.replace('.ply', '_post.ply')), mesh_post)
+        # print("mesh post processed saved at {}".format(os.path.join(mesh_path, name_save.replace('.ply', '_post.ply'))))
 
 
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, smpl_rot):
     render_path = os.path.join(model_path, name+'_img_geo', "ours_{}".format(iteration), "renders")
+    gs_mesh_path = os.path.join(model_path, name+'_gs_mesh', "ours_{}".format(iteration))
     # gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
 
     makedirs(render_path, exist_ok=True)
+    makedirs(gs_mesh_path, exist_ok=True)
     # makedirs(gts_path, exist_ok=True)
 
     # # Load data (deserialize)
@@ -119,10 +123,11 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
         # Start timer
         start_time = time.time() 
-        render_output = render(view, gaussians, pipeline, background, transforms=transforms, translation=translation)
+        render_output = render(view, gaussians, pipeline, background, transforms=transforms, translation=translation, return_gs_mesh=True)
         rendering = render_output["render"]
         depth = render_output["render_depth"]
         alpha = render_output["render_alpha"]
+        gs_mesh = render_output["gs_mesh"]
 
         # end time
         end_time = time.time()
@@ -158,6 +163,9 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
 
         img_save = torch.cat([rendering, depth_map_image, depth_normal_image], dim=-1)
         torchvision.utils.save_image(img_save, os.path.join(render_path, fn))
+
+        if gs_mesh is not None:
+            gs_mesh.export(os.path.join(gs_mesh_path, fn.replace('png', 'ply')))
 
     np.savez(os.path.join(model_path, f'geometry_{name}.npz'), **geometry_dict)
     # Calculate elapsed time
