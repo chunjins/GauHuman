@@ -1127,6 +1127,9 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
     idx = 0
     for img_idx in range(num_start, num_end, skip):
         image_name = dataset['frames_name'][img_idx].decode('UTF-8').replace('.png', '')
+        frame_idx = image_name.split('_')[-1]
+        cam_idx = image_name.split('_')[1]
+
         image = dataset['images'][img_idx].reshape(img_shape).astype('float32') / 255.
         msk = dataset['masks'][img_idx].reshape(img_shape[0], img_shape[1])
         if np.max(msk) > 1:
@@ -1186,7 +1189,7 @@ def readCamerasCustom(path, white_background=True, image_scaling=1.0, split='tra
 
 
         cam_infos.append(
-            CameraInfo(uid=idx, pose_id=idx, frame_id=idx, cam_id=idx, R=R, T=T, K=K, FovY=FovY,
+            CameraInfo(uid=idx, pose_id=frame_idx, frame_id=frame_idx, cam_id=cam_idx, R=R, T=T, K=K, FovY=FovY,
                        FovX=FovX, image=image,
                        image_path=None, image_name=image_name, bkgd_mask=bkgd_mask,
                        bound_mask=bound_mask, width=image.size[0], height=image.size[1],
@@ -1345,4 +1348,5 @@ sceneLoadTypeCallbacks = {
     'actorhq': readCustomInfo,
     'mpi': readCustomInfo,
     'synwild': readCustomInfo,
+    'custom': readCustomInfo,
 }

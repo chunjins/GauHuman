@@ -72,7 +72,10 @@ class Scene:
             scene_info = sceneLoadTypeCallbacks["synwild"](args.source_path, args.white_background, args.exp_name, args.eval, args.split, args.img_scale, args.eval_start, args.eval_end, args.skip)
 
         else:
-            assert False, "Could not recognize scene type!"
+            print("assuming custom data set!")
+            scene_info = sceneLoadTypeCallbacks["custom"](args.source_path, args.white_background, args.exp_name,
+                                                           args.eval, args.split, args.img_scale, args.eval_start,
+                                                           args.eval_end, args.skip)
 
         if not self.loaded_iter:
             with open(scene_info.ply_path, 'rb') as src_file, open(os.path.join(self.model_path, "input.ply") , 'wb') as dest_file:
